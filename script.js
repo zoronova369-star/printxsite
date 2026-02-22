@@ -1,8 +1,5 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// Initialize Cashfree SDK once at the top level
-const cashfree = Cashfree({ mode: 'production' });
-
 const fileInput = document.getElementById('documents');
 const fileList = document.getElementById('file-list');
 const customPagesInput = document.getElementById('custom-pages');
@@ -16,13 +13,17 @@ const otpValue = document.getElementById('otp-value');
 const previewDiv = document.getElementById('preview');
 
 let filesData = {}; // {filename: {file, numPages}}
+let isProcessing = false; // Prevent duplicate submissions
 
 fileInput.addEventListener('change', handleFiles);
 pageSelectionRadios.forEach(radio => radio.addEventListener('change', toggleCustomInput));
 calculateBtn.addEventListener('click', calculatePreview);
 payNowBtn.addEventListener('click', () => processPayment('payNow'));
 payLaterBtn.addEventListener('click', () => processPayment('payLater'));
-cancelBtn.addEventListener('click', () => location.reload());
+cancelBtn.addEventListener('click', () => {
+  isProcessing = false;
+  location.reload();
+});
 
 function toggleCustomInput() {
   customPagesInput.disabled = document.querySelector('input[name="pageSelection"]:checked').value !== 'custom';
@@ -113,8 +114,23 @@ function calculatePreview() {
 }
 
 async function processPayment(method) {
+  // Prevent double-clicking or accidental re-submission
+  if (isProcessing) {
+    alert('Order is already being processed. Please wait...');
+    return;
+  }
+
   const previewData = calculatePreview();
   if (!previewData || Object.keys(filesData).length === 0) return alert('Select files and calculate preview first');
+
+  // Disable buttons and show processing status
+  isProcessing = true;
+  const originalPayNowText = payNowBtn.innerText;
+  const originalPayLaterText = payLaterBtn.innerText;
+  payNowBtn.disabled = true;
+  payLaterBtn.disabled = true;
+  payNowBtn.innerText = 'Processing...';
+  payLaterBtn.innerText = 'Processing...';
 
   const formData = new FormData();
   Object.values(filesData).forEach(({ file }) => formData.append('documents', file));
@@ -129,56 +145,64 @@ async function processPayment(method) {
   formData.append('price', previewData.price);
 
   try {
-    payNowBtn.disabled = true;
-    payLaterBtn.disabled = true;
-
     const res = await fetch('/process', { method: 'POST', body: formData });
-    const data = await res.json();
-
+    
+    // Check if response is ok
+    if (!res.ok) {
+      console.error('HTTP error:', res.status, res.statusText);
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
+    let data;
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      console.error('Failed to parse response:', res.text);
+      throw new Error('Server response was not valid JSON');
+    }
+    
     if (data.error) {
-      alert(data.error);
+      console.error('Server error:', data.error);
+      alert('Error: ' + data.error);
+      // Re-enable buttons on error
+      isProcessing = false;
       payNowBtn.disabled = false;
       payLaterBtn.disabled = false;
+      payNowBtn.innerText = originalPayNowText;
+      payLaterBtn.innerText = originalPayLaterText;
       return;
     }
 
+    // If there's a warning (e.g., Cashfree failed), show it but still show OTP
+    if (data.warning) {
+      console.warn('Payment warning:', data.warning);
+      showOTP(data.otp);
+      alert('Note: ' + data.warning + '\n\nYour OTP is displayed. You can check status or pay later using this OTP.');
+      return;
+    }
+
+    // Normal flow - Pay Later
     if (method === 'payLater') {
       showOTP(data.otp);
-    } else {
-      // Pay Now: Initiate Cashfree
-      if (!data.sessionId) {
-        console.error('Server did not return sessionId:', data);
-        alert('Payment Gateway Error: ' + (data.error || 'Could not initialize payment session.') + '\n\nPlease use the "Pay Later" button instead.');
-        payNowBtn.disabled = false;
-        payLaterBtn.disabled = false;
-        return;
-      }
-
-      console.log('Initiating Cashfree Checkout. Session:', data.sessionId);
-
-      try {
-        const result = await cashfree.checkout({
-          paymentSessionId: data.sessionId,
-          returnUrl: `${window.location.origin}/verify.html?order_id=${data.orderId}`
-        });
-
-        if (result.error) {
-          console.error('Cashfree SDK Error:', result.error);
-          alert('Payment Failed: ' + result.error.message + '\n\nPlease use "Pay Later" instead.');
-          payNowBtn.disabled = false;
-          payLaterBtn.disabled = false;
-        }
-      } catch (e) {
-        console.error('Fatal Checkout Error:', e);
-        alert('Gateway Error. Please use "Pay Later" instead.');
-        payNowBtn.disabled = false;
-        payLaterBtn.disabled = false;
-      }
+      alert('Order received! Your OTP: ' + data.otp);
+      return;
+    }
+    
+    // Pay Now - try Cashfree if we have sessionId
+    if (method === 'payNow' && data.sessionId) {
+      const cashfree = Cashfree({ mode: 'sandbox' });
+      cashfree.checkout({ paymentSessionId: data.sessionId });
+      showOTP(data.otp);
     }
   } catch (err) {
-    alert('Error processing');
+    console.error('Processing error:', err);
+    alert('Error processing payment: ' + err.message + '\n\nPlease check the console for more details.');
+    // Re-enable buttons on error
+    isProcessing = false;
     payNowBtn.disabled = false;
     payLaterBtn.disabled = false;
+    payNowBtn.innerText = originalPayNowText;
+    payLaterBtn.innerText = originalPayLaterText;
   }
 }
 

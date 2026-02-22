@@ -2,10 +2,47 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Print Shop</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+  }
+
+  #otp-section {
+    border: 1px solid black;
+    margin: 10px;
+    padding: 10px;
+  }
+
+  #file-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  #file-list li {
+    margin: 5px;
+    border: 1px solid gray;
+    padding: 5px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  button {
+    margin: 10px;
+  }
+
+  #preview {
+    margin: 20px;
+    border: 1px dashed gray;
+    padding: 10px;
+  }
+</style>
 </head>
 <body>
   <div id="otp-section" style="display: none;">

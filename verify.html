@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verifying Payment...</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f4f4f9; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+        .spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 1rem auto; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .otp { font-size: 2.5rem; font-weight: bold; color: #1e3a8a; letter-spacing: 4px; margin: 1rem 0; }
+        .success-icon { font-size: 3rem; color: #10b981; }
+        .error { color: #ef4444; }
+        button { background: #3b82f6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="card" id="status-card">
+        <h2>Verifying Payment</h2>
+        <div class="spinner"></div>
+        <p>Please wait while we confirm your transaction...</p>
+    </div>
+
+    <script>
+        const statusCard = document.getElementById('status-card');
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('order_id');
+
+        async function verify() {
+            if (!orderId) {
+                showError('Invalid request. No order ID found.');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/verify-payment/${orderId}`);
+                const data = await res.json();
+
+                if (data.success || data.otp) {
+                    showSuccess(data.otp);
+                } else {
+                    showError(data.error || 'Payment verification failed.');
+                }
+            } catch (err) {
+                showError('Network error. Please try again.');
+            }
+        }
+
+        function showSuccess(otp) {
+            statusCard.innerHTML = `
+                <div class="success-icon">✓</div>
+                <h2>Payment Successful!</h2>
+                <p>Your print job is ready. Please use this OTP at the booth:</p>
+                <div class="otp">${otp}</div>
+                <button onclick="window.location.href='/'">Go Home</button>
+            `;
+        }
+
+        function showError(msg) {
+            statusCard.innerHTML = `
+                <h2 class="error">Verification Failed</h2>
+                <p>${msg}</p>
+                <p>If you have already paid, please contact support with Order ID: <strong>${orderId}</strong></p>
+                <button onclick="window.location.href='/'">Back to Home</button>
+            `;
+        }
+
+        // Start verification
+        setTimeout(verify, 2000); // Wait 2s for Cashfree webhook/API update
+    </script>
+</body>
+</html>
